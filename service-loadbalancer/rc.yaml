@@ -19,7 +19,7 @@ spec:
       nodeSelector:
         role: loadbalancer
       containers:
-      - image: gcr.io/google_containers/servicelb:0.4
+      - image: nishadi/serviceha:0.1
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -36,7 +36,7 @@ spec:
           protocol: TCP
         # nginx https
         - containerPort: 443
-          hostPort: 8080
+          hostPort: 8083
           protocol: TCP
         # mysql
         - containerPort: 3306
@@ -49,3 +49,4 @@ spec:
         resources: {}
         args:
         - --tcp-services=mysql:3306,nginxsvc:443
+        - --ssl-cert= /etc/haproxy/ssl.pem
