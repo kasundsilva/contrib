@@ -186,6 +186,10 @@ type service struct {
 	// The name of the cookie is SERVERID
 	// This only can be used in http services
 	CookieStickySession bool
+
+	//Different Connection mode for different application types
+	IsDifferentConnectionMode bool
+	ConnectionMode string
 }
 
 type serviceByName []service
@@ -474,6 +478,11 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 
 			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getAclMatch(); ok {
 				newSvc.AclMatch = val
+			}
+
+			if apptype := s.ObjectMeta.Labels["type"]; apptype == "mss" {
+				newSvc.IsDifferentConnectionMode = true
+				newSvc.ConnectionMode = "http-server-close"
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
