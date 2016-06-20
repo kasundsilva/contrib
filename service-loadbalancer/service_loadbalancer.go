@@ -39,7 +39,7 @@ import (
 	"k8s.io/kubernetes/pkg/controller/framework"
 	"k8s.io/kubernetes/pkg/fields"
 	kubectl_util "k8s.io/kubernetes/pkg/kubectl/cmd/util"
-	"k8s.io/kubernetes/pkg/util"
+	"k8s.io/kubernetes/pkg/util/flowcontrol"
 	"k8s.io/kubernetes/pkg/util/intstr"
 	"k8s.io/kubernetes/pkg/util/wait"
 	"k8s.io/kubernetes/pkg/util/workqueue"
@@ -353,7 +353,7 @@ type loadBalancerController struct {
 	svcController     *framework.Controller
 	svcLister         cache.StoreToServiceLister
 	epLister          cache.StoreToEndpointsLister
-	reloadRateLimiter util.RateLimiter
+	reloadRateLimiter flowcontrol.RateLimiter
 	template          string
 	targetService     string
 	forwardServices   bool
@@ -557,7 +557,7 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 		cfg:    cfg,
 		client: kubeClient,
 		queue:  workqueue.New(),
-		reloadRateLimiter: util.NewTokenBucketRateLimiter(
+		reloadRateLimiter: flowcontrol.NewTokenBucketRateLimiter(
 			reloadQPS, int(reloadQPS)),
 		targetService:   *targetService,
 		forwardServices: *forwardServices,
