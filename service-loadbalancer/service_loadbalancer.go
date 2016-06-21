@@ -482,7 +482,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 
 			if apptype := s.ObjectMeta.Labels["type"]; apptype == "mss" {
 				newSvc.IsDifferentConnectionMode = true
-				newSvc.ConnectionMode = "http-server-close"
+				newSvc.ConnectionMode = "httpclose"
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
