@@ -190,6 +190,7 @@ type service struct {
 	//Different Connection mode for different application types
 	IsDifferentConnectionMode bool
 	ConnectionMode            string
+	HTTPSHealthCheck          string
 }
 
 type serviceByName []service
@@ -483,6 +484,7 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 			if apptype := s.ObjectMeta.Labels["type"]; apptype == "mss" {
 				newSvc.IsDifferentConnectionMode = true
 				newSvc.ConnectionMode = "httpclose"
+				newSvc.HTTPSHealthCheck = ""
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
