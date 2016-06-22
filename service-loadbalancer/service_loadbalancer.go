@@ -180,16 +180,17 @@ type service struct {
 	// http://cbonte.github.io/haproxy-dconv/configuration-1.5.html#stick-table
 	// Enabled using the attribute service.spec.sessionAffinity
 	// https://github.com/kubernetes/kubernetes/blob/master/docs/user-guide/services.md#virtual-ips-and-service-proxies
-	SessionAffinity bool
+	SessionAffinity           bool
 
 	// CookieStickySession use a cookie to enable sticky sessions.
 	// The name of the cookie is SERVERID
 	// This only can be used in http services
-	CookieStickySession bool
+	CookieStickySession       bool
 
 	//Different Connection mode for different application types
 	IsDifferentConnectionMode bool
-	ConnectionMode string
+	ConnectionMode            string
+	HTTPSHealthCheck          string
 }
 
 type serviceByName []service
@@ -480,9 +481,12 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				newSvc.AclMatch = val
 			}
 
+			newSvc.HTTPSHealthCheck = "check"
+
 			if apptype := s.ObjectMeta.Labels["type"]; apptype == "mss" {
 				newSvc.IsDifferentConnectionMode = true
 				newSvc.ConnectionMode = "httpclose"
+				newSvc.HTTPSHealthCheck = ""
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
