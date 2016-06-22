@@ -35,5 +35,7 @@ ADD template.cfg template.cfg
 ADD loadbalancer.json loadbalancer.json
 ADD haproxy_reload haproxy_reload
 ADD README.md README.md
+ADD ssl.pem /etc/haproxy/ssl.pem
+ADD ca.crt /etc/haproxy/ca.crt
 
 RUN touch /var/run/haproxy.pid
