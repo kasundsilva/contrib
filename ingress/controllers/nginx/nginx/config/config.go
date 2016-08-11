@@ -42,7 +42,7 @@ const (
 	// If UseProxyProtocol is enabled defIPCIDR defines the default the IP/network address of your external load balancer
 	defIPCIDR = "0.0.0.0/0"
 
-	gzipTypes = "application/atom+xml application/javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/plain text/x-component"
+	gzipTypes = "application/atom+xml application/javascript aplication/x-javascript application/json application/rss+xml application/vnd.ms-fontobject application/x-font-ttf application/x-web-app-manifest+json application/xhtml+xml application/xml font/opentype image/svg+xml image/x-icon text/css text/plain text/x-component"
 
 	// http://nginx.org/en/docs/http/ngx_http_ssl_module.html#ssl_buffer_size
 	// Sets the size of the buffer used for sending data.
@@ -77,6 +77,16 @@ type Configuration struct {
 	// http://nginx.org/en/docs/http/ngx_http_core_module.html#client_max_body_size
 	// Sets the maximum allowed size of the client request body
 	BodySize string `structs:"body-size,omitempty"`
+
+	// EnableDynamicTLSRecords enables dynamic TLS record sizes
+	// https://blog.cloudflare.com/optimizing-tls-over-tcp-to-reduce-latency
+	// By default this is enabled
+	EnableDynamicTLSRecords bool `structs:"enable-dynamic-tls-records"`
+
+	// EnableSPDY enables spdy and use ALPN and NPN to advertise the availability of the two protocols
+	// https://blog.cloudflare.com/open-sourcing-our-nginx-http-2-spdy-code
+	// By default this is enabled
+	EnableSPDY bool `structs:"enable-spdy"`
 
 	// EnableStickySessions enabled sticky sessions using cookies
 	// https://bitbucket.org/nginx-goodies/nginx-sticky-module-ng
@@ -162,6 +172,11 @@ type Configuration struct {
 	// http://nginx.org/en/docs/http/ngx_http_core_module.html#server_names_hash_bucket_size
 	ServerNameHashBucketSize int `structs:"server-name-hash-bucket-size,omitempty"`
 
+	// SkipAccessLogURLs sets a list of URLs that should not appear in the NGINX access log
+	// This is useful with urls like `/health` or `health-check` that make "complex" reading the logs
+	// By default this list is empty
+	SkipAccessLogURLs []string `structs:"skip-access-log-urls,-"`
+
 	// Enables or disables the redirect (301) to the HTTPS port
 	SSLRedirect bool `structs:"ssl-redirect,omitempty"`
 
@@ -233,6 +248,10 @@ type Configuration struct {
 	// Responses with the “text/html” type are always compressed if UseGzip is enabled
 	GzipTypes string `structs:"gzip-types,omitempty"`
 
+	// WhitelistSourceRange allows limiting access to certain client addresses
+	// http://nginx.org/en/docs/http/ngx_http_access_module.html
+	WhitelistSourceRange []string `structs:"whitelist-source-range,omitempty"`
+
 	// Defines the number of worker processes. By default auto means number of available CPU cores
 	// http://nginx.org/en/docs/ngx_core_module.html#worker_processes
 	WorkerProcesses string `structs:"worker-processes,omitempty"`
@@ -242,9 +261,11 @@ type Configuration struct {
 // in the file default-conf.json
 func NewDefault() Configuration {
 	cfg := Configuration{
-		BodySize:      bodySize,
-		ErrorLogLevel: errorLevel,
-		HSTS:          true,
+		BodySize:                bodySize,
+		EnableDynamicTLSRecords: true,
+		EnableSPDY:              true,
+		ErrorLogLevel:           errorLevel,
+		HSTS:                    true,
 		HSTSIncludeSubdomains:    true,
 		HSTSMaxAge:               hstsMaxAge,
 		GzipTypes:                gzipTypes,
@@ -270,6 +291,8 @@ func NewDefault() Configuration {
 		VtsStatusZoneSize:        "10m",
 		UseHTTP2:                 true,
 		CustomHTTPErrors:         make([]int, 0),
+		WhitelistSourceRange:     make([]string, 0),
+		SkipAccessLogURLs:        make([]string, 0),
 	}
 
 	if glog.V(5) {

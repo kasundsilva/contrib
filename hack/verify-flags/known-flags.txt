@@ -6,7 +6,9 @@ block-path-config
 blunderbuss-config
 blunderbuss-reassign
 change-permissions
+chart-url
 cloud-config
+cloud-provider
 cluster-uid
 configuration-name
 current-release-pr
@@ -21,6 +23,7 @@ dry-run
 dump-nginx-configuration
 e2e-status-context
 election-namespace
+enable-md-yaml
 enable-output-coloring
 error-page
 etcd-prefix
@@ -32,9 +35,15 @@ extra-storage
 fake-e2e
 fixes-issue-reassign
 forward-services
+gcs-bucket
+gcs-logs-dir
+gcm-endpoint
 generated-files-config
 health-check-path
 healthz-port
+history-url
+http-cache-dir
+http-cache-size
 http-port
 insecure-registry
 insecure-skip-verify
@@ -42,13 +51,15 @@ issue-mungers
 issue-reports
 jenkins-host
 jenkins-jobs
-kubernetes-dir
+label-file
 last-release-pr
 left-build-number
 max-pr-number
 max-sync-failures
+max-nodes-total
 min-pr-number
 network-config
+nonblocking-jenkins-jobs
 nginx-configmap
 number-of-old-test-results
 on-change
@@ -57,9 +68,13 @@ on-start
 path-label-config
 poll-period
 pr-mungers
+presubmit-jobs
+pull-key
+pull-logs-dir
 rate-limit
 rate-limit-burst
 relnote-filter
+repo-dir
 required-contexts
 right-build-number
 running-in-cluster
@@ -82,6 +97,7 @@ ssl-cert
 start-from
 stats-port
 sync-period
+test-owners-csv
 tcp-services
 tcp-services-configmap
 token-file
@@ -90,7 +106,6 @@ udp-services-configmap
 unit-status-context
 url-list
 use-cluster-credentials
-use-http-cache
 use-ip
 use-kubernetes-cluster-service
 use-real-cloud
@@ -104,3 +119,6 @@ whitelist-override-label
 config-file-path
 required-retest-contexts
 retest-body
+default-ssl-certificate
+housekeeping-interval
+system-namespace

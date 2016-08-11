@@ -111,7 +111,7 @@ func NoRetestIssue() *github.Issue {
 	return github_test.Issue(someUserName, 1, []string{claYesLabel, lgtmLabel, retestNotRequiredLabel}, true)
 }
 
-func OldLGTMEvents() []github.IssueEvent {
+func OldLGTMEvents() []*github.IssueEvent {
 	return github_test.Events([]github_test.LabelTime{
 		{"bob", lgtmLabel, 6},
 		{"bob", lgtmLabel, 7},
@@ -119,7 +119,7 @@ func OldLGTMEvents() []github.IssueEvent {
 	})
 }
 
-func NewLGTMEvents() []github.IssueEvent {
+func NewLGTMEvents() []*github.IssueEvent {
 	return github_test.Events([]github_test.LabelTime{
 		{"bob", lgtmLabel, 10},
 		{"bob", lgtmLabel, 11},
@@ -127,7 +127,7 @@ func NewLGTMEvents() []github.IssueEvent {
 	})
 }
 
-func OverlappingLGTMEvents() []github.IssueEvent {
+func OverlappingLGTMEvents() []*github.IssueEvent {
 	return github_test.Events([]github_test.LabelTime{
 		{"bob", lgtmLabel, 8},
 		{"bob", lgtmLabel, 9},
@@ -137,20 +137,20 @@ func OverlappingLGTMEvents() []github.IssueEvent {
 
 // Commits returns a slice of github.RepositoryCommit of len==3 which
 // happened at times 7, 8, 9
-func Commits() []github.RepositoryCommit {
+func Commits() []*github.RepositoryCommit {
 	return github_test.Commits(3, 7)
 }
 
 func SuccessStatus() *github.CombinedStatus {
-	return github_test.Status("mysha", []string{travisContext, requiredReTestContext1, requiredReTestContext2, notRequiredReTestContext1, notRequiredReTestContext2}, nil, nil, nil)
+	return github_test.Status("mysha", []string{requiredReTestContext1, requiredReTestContext2, notRequiredReTestContext1, notRequiredReTestContext2}, nil, nil, nil)
 }
 
 func RetestFailStatus() *github.CombinedStatus {
-	return github_test.Status("mysha", []string{travisContext, requiredReTestContext1, notRequiredReTestContext1, notRequiredReTestContext2}, []string{requiredReTestContext2}, nil, nil)
+	return github_test.Status("mysha", []string{requiredReTestContext1, notRequiredReTestContext1, notRequiredReTestContext2}, []string{requiredReTestContext2}, nil, nil)
 }
 
 func NoRetestFailStatus() *github.CombinedStatus {
-	return github_test.Status("mysha", []string{travisContext, requiredReTestContext1, requiredReTestContext2, notRequiredReTestContext1}, []string{notRequiredReTestContext2}, nil, nil)
+	return github_test.Status("mysha", []string{requiredReTestContext1, requiredReTestContext2, notRequiredReTestContext1}, []string{notRequiredReTestContext2}, nil, nil)
 }
 
 func LastBuildNumber() int {
@@ -182,7 +182,7 @@ func getTestSQ(startThreads bool, config *github_util.Config, server *httptest.S
 	sq := new(SubmitQueue)
 	sq.RequiredStatusContexts = []string{notRequiredReTestContext1, notRequiredReTestContext2}
 	sq.RequiredRetestContexts = []string{requiredReTestContext1, requiredReTestContext2}
-	sq.JobNames = []string{"foo"}
+	sq.BlockingJobNames = []string{"foo"}
 	sq.WeakStableJobNames = []string{"bar"}
 	sq.githubE2EQueue = map[int]*github_util.MungeObject{}
 	sq.githubE2EPollTime = 50 * time.Millisecond
@@ -199,7 +199,7 @@ func getTestSQ(startThreads bool, config *github_util.Config, server *httptest.S
 	sq.doNotMergeMilestones = []string{doNotMergeMilestone}
 
 	sq.e2e = &fake_e2e.FakeE2ETester{
-		JobNames:           sq.JobNames,
+		JobNames:           sq.BlockingJobNames,
 		WeakStableJobNames: sq.WeakStableJobNames,
 	}
 
@@ -213,90 +213,90 @@ func getTestSQ(startThreads bool, config *github_util.Config, server *httptest.S
 func TestQueueOrder(t *testing.T) {
 	tests := []struct {
 		name     string
-		issues   []github.Issue
+		issues   []*github.Issue
 		expected []int
 	}{
 		{
 			name: "Just prNum",
-			issues: []github.Issue{
-				*github_test.Issue(someUserName, 2, nil, true),
-				*github_test.Issue(someUserName, 3, nil, true),
-				*github_test.Issue(someUserName, 4, nil, true),
-				*github_test.Issue(someUserName, 5, nil, true),
+			issues: []*github.Issue{
+				github_test.Issue(someUserName, 2, nil, true),
+				github_test.Issue(someUserName, 3, nil, true),
+				github_test.Issue(someUserName, 4, nil, true),
+				github_test.Issue(someUserName, 5, nil, true),
 			},
 			expected: []int{2, 3, 4, 5},
 		},
 		{
 			name: "With a priority label",
-			issues: []github.Issue{
-				*github_test.Issue(someUserName, 2, []string{"priority/P1"}, true),
-				*github_test.Issue(someUserName, 3, []string{"priority/P1"}, true),
-				*github_test.Issue(someUserName, 4, []string{"priority/P0"}, true),
-				*github_test.Issue(someUserName, 5, nil, true),
+			issues: []*github.Issue{
+				github_test.Issue(someUserName, 2, []string{"priority/P1"}, true),
+				github_test.Issue(someUserName, 3, []string{"priority/P1"}, true),
+				github_test.Issue(someUserName, 4, []string{"priority/P0"}, true),
+				github_test.Issue(someUserName, 5, nil, true),
 			},
 			expected: []int{4, 2, 3, 5},
 		},
 		{
 			name: "With two priority labels",
-			issues: []github.Issue{
-				*github_test.Issue(someUserName, 2, []string{"priority/P1", "priority/P0"}, true),
-				*github_test.Issue(someUserName, 3, []string{"priority/P1"}, true),
-				*github_test.Issue(someUserName, 4, []string{"priority/P0"}, true),
-				*github_test.Issue(someUserName, 5, nil, true),
+			issues: []*github.Issue{
+				github_test.Issue(someUserName, 2, []string{"priority/P1", "priority/P0"}, true),
+				github_test.Issue(someUserName, 3, []string{"priority/P1"}, true),
+				github_test.Issue(someUserName, 4, []string{"priority/P0"}, true),
+				github_test.Issue(someUserName, 5, nil, true),
 			},
 			expected: []int{2, 4, 3, 5},
 		},
 		{
 			name: "With unrelated labels",
-			issues: []github.Issue{
-				*github_test.Issue(someUserName, 2, []string{"priority/P1", "priority/P0"}, true),
-				*github_test.Issue(someUserName, 3, []string{"priority/P1", "kind/design"}, true),
-				*github_test.Issue(someUserName, 4, []string{"priority/P0"}, true),
-				*github_test.Issue(someUserName, 5, []string{lgtmLabel, "kind/new-api"}, true),
+			issues: []*github.Issue{
+				github_test.Issue(someUserName, 2, []string{"priority/P1", "priority/P0"}, true),
+				github_test.Issue(someUserName, 3, []string{"priority/P1", "kind/design"}, true),
+				github_test.Issue(someUserName, 4, []string{"priority/P0"}, true),
+				github_test.Issue(someUserName, 5, []string{lgtmLabel, "kind/new-api"}, true),
 			},
 			expected: []int{2, 4, 3, 5},
 		},
 		{
 			name: "With invalid priority label",
-			issues: []github.Issue{
-				*github_test.Issue(someUserName, 2, []string{"priority/P1", "priority/P0"}, true),
-				*github_test.Issue(someUserName, 3, []string{"priority/P1", "kind/design", "priority/high"}, true),
-				*github_test.Issue(someUserName, 4, []string{"priority/P0", "priorty/bob"}, true),
-				*github_test.Issue(someUserName, 5, nil, true),
+			issues: []*github.Issue{
+				github_test.Issue(someUserName, 2, []string{"priority/P1", "priority/P0"}, true),
+				github_test.Issue(someUserName, 3, []string{"priority/P1", "kind/design", "priority/high"}, true),
+				github_test.Issue(someUserName, 4, []string{"priority/P0", "priorty/bob"}, true),
+				github_test.Issue(someUserName, 5, nil, true),
 			},
 			expected: []int{2, 4, 3, 5},
 		},
 		{
 			name: "Unlabeled counts as P3",
-			issues: []github.Issue{
-				*github_test.Issue(someUserName, 2, nil, true),
-				*github_test.Issue(someUserName, 3, []string{"priority/P3"}, true),
-				*github_test.Issue(someUserName, 4, []string{"priority/P2"}, true),
-				*github_test.Issue(someUserName, 5, nil, true),
+			issues: []*github.Issue{
+				github_test.Issue(someUserName, 2, nil, true),
+				github_test.Issue(someUserName, 3, []string{"priority/P3"}, true),
+				github_test.Issue(someUserName, 4, []string{"priority/P2"}, true),
+				github_test.Issue(someUserName, 5, nil, true),
 			},
 			expected: []int{4, 2, 3, 5},
 		},
 		{
 			name: "retestNotRequiredLabel counts as P-negative 1",
-			issues: []github.Issue{
-				*github_test.Issue(someUserName, 2, nil, true),
-				*github_test.Issue(someUserName, 3, []string{"priority/P3"}, true),
-				*github_test.Issue(someUserName, 4, []string{"priority/P2"}, true),
-				*github_test.Issue(someUserName, 5, nil, true),
-				*github_test.Issue(someUserName, 6, []string{"priority/P3", retestNotRequiredLabel}, true),
+			issues: []*github.Issue{
+				github_test.Issue(someUserName, 2, nil, true),
+				github_test.Issue(someUserName, 3, []string{"priority/P3"}, true),
+				github_test.Issue(someUserName, 4, []string{"priority/P2"}, true),
+				github_test.Issue(someUserName, 5, nil, true),
+				github_test.Issue(someUserName, 6, []string{"priority/P3", retestNotRequiredLabel}, true),
 			},
 			expected: []int{6, 4, 2, 3, 5},
 		},
 	}
 	for testNum, test := range tests {
 		config := &github_util.Config{}
-		client, server, mux := github_test.InitServer(t, nil, nil, nil, nil, nil, nil)
+		client, server, mux := github_test.InitServer(t, nil, nil, nil, nil, nil, nil, nil)
 		config.Org = "o"
 		config.Project = "r"
 		config.SetClient(client)
 		sq := getTestSQ(false, config, server)
 		for i := range test.issues {
-			issue := &test.issues[i]
+			issue := test.issues[i]
 			github_test.ServeIssue(t, mux, issue)
 
 			issueNum := *issue.Number
@@ -322,8 +322,8 @@ func TestQueueOrder(t *testing.T) {
 
 func TestValidateLGTMAfterPush(t *testing.T) {
 	tests := []struct {
-		issueEvents []github.IssueEvent
-		commits     []github.RepositoryCommit
+		issueEvents []*github.IssueEvent
+		commits     []*github.RepositoryCommit
 		shouldPass  bool
 	}{
 		{
@@ -344,7 +344,7 @@ func TestValidateLGTMAfterPush(t *testing.T) {
 	}
 	for testNum, test := range tests {
 		config := &github_util.Config{}
-		client, server, _ := github_test.InitServer(t, nil, nil, test.issueEvents, test.commits, nil, nil)
+		client, server, _ := github_test.InitServer(t, nil, nil, test.issueEvents, test.commits, nil, nil, nil)
 		config.Org = "o"
 		config.Project = "r"
 		config.SetClient(client)
@@ -433,8 +433,8 @@ func TestSubmitQueue(t *testing.T) {
 		name             string // because when the fail, counting is hard
 		pr               *github.PullRequest
 		issue            *github.Issue
-		commits          []github.RepositoryCommit
-		events           []github.IssueEvent
+		commits          []*github.RepositoryCommit
+		events           []*github.IssueEvent
 		ciStatus         *github.CombinedStatus
 		lastBuildNumber  int
 		gcsResult        utils.FinishedFile
@@ -445,6 +445,9 @@ func TestSubmitQueue(t *testing.T) {
 		mergeAfterQueued bool
 		reason           string
 		state            string // what the github status context should be for the PR HEAD
+
+		emergencyMergeStop bool
+		isMerged           bool
 
 		imHeadSHA      string
 		imBaseSHA      string
@@ -466,6 +469,25 @@ func TestSubmitQueue(t *testing.T) {
 			retest2Pass:     true,
 			reason:          merged,
 			state:           "success",
+			isMerged:        true,
+		},
+		// Entire thing was run and good, but emergency merge stop in progress
+		{
+			name:               "Test1+emergencyStop",
+			pr:                 ValidPR(),
+			issue:              LGTMIssue(),
+			events:             NewLGTMEvents(),
+			commits:            Commits(), // Modified at time.Unix(7), 8, and 9
+			ciStatus:           SuccessStatus(),
+			lastBuildNumber:    LastBuildNumber(),
+			gcsResult:          SuccessGCS(),
+			weakResults:        map[int]utils.FinishedFile{LastBuildNumber(): SuccessGCS()},
+			retest1Pass:        true,
+			retest2Pass:        true,
+			emergencyMergeStop: true,
+			isMerged:           false,
+			reason:             e2eFailure,
+			state:              "success",
 		},
 		// Should pass without running tests because we had a previous run.
 		// TODO: Add a proper test to make sure we don't shuffle queue when we can just merge a PR
@@ -483,6 +505,7 @@ func TestSubmitQueue(t *testing.T) {
 			retest2Pass:     true,
 			reason:          merged,
 			state:           "success",
+			isMerged:        true,
 			retestsAvoided:  1,
 			imHeadSHA:       "mysha", // Set by ValidPR
 			imBaseSHA:       "mastersha",
@@ -520,6 +543,7 @@ func TestSubmitQueue(t *testing.T) {
 			retest2Pass:     false,
 			reason:          merged,
 			state:           "success",
+			isMerged:        true,
 		},
 		// Fail because PR can't automatically merge
 		{
@@ -842,7 +866,7 @@ func TestSubmitQueue(t *testing.T) {
 		issueNumStr := strconv.Itoa(issueNum)
 
 		test.issue.Number = &issueNum
-		client, server, mux := github_test.InitServer(t, test.issue, test.pr, test.events, test.commits, test.ciStatus, test.masterCommit)
+		client, server, mux := github_test.InitServer(t, test.issue, test.pr, test.events, test.commits, test.ciStatus, test.masterCommit, nil)
 
 		config := &github_util.Config{}
 		config.Org = "o"
@@ -853,9 +877,10 @@ func TestSubmitQueue(t *testing.T) {
 		config.PendingWaitTime = &d
 
 		stateSet := ""
+		wasMerged := false
 
 		numTestChecks := 0
-		path := "/foo/latest-build.txt"
+		path := "/bucket/logs/foo/latest-build.txt"
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != "GET" {
 				t.Errorf("Unexpected method: %s", r.Method)
@@ -875,7 +900,7 @@ func TestSubmitQueue(t *testing.T) {
 				test.pr.Mergeable = nil
 			}
 		})
-		path = fmt.Sprintf("/foo/%v/finished.json", test.lastBuildNumber)
+		path = fmt.Sprintf("/bucket/logs/foo/%v/finished.json", test.lastBuildNumber)
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != "GET" {
 				t.Errorf("Unexpected method: %s", r.Method)
@@ -887,7 +912,7 @@ func TestSubmitQueue(t *testing.T) {
 			}
 			w.Write(data)
 		})
-		path = "/bar/latest-build.txt"
+		path = "/bucket/logs/bar/latest-build.txt"
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
 			if r.Method != "GET" {
 				t.Errorf("Unexpected method: %s", r.Method)
@@ -896,7 +921,7 @@ func TestSubmitQueue(t *testing.T) {
 			w.Write([]byte(strconv.Itoa(test.lastBuildNumber)))
 		})
 		for buildNumber := range test.weakResults {
-			path = fmt.Sprintf("/bar/%v/finished.json", buildNumber)
+			path = fmt.Sprintf("/bucket/logs/bar/%v/finished.json", buildNumber)
 			// workaround go for loop semantics
 			buildNumberCopy := buildNumber
 			mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -912,7 +937,7 @@ func TestSubmitQueue(t *testing.T) {
 			})
 		}
 		for junitFile, xml := range test.gcsJunit {
-			path = fmt.Sprintf("/bar/%v/artifacts/%v", test.lastBuildNumber, junitFile)
+			path = fmt.Sprintf("/bucket/logs/bar/%v/artifacts/%v", test.lastBuildNumber, junitFile)
 			// workaround go for loop semantics
 			xmlCopy := xml
 			mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -963,6 +988,7 @@ func TestSubmitQueue(t *testing.T) {
 			}
 			w.Write(data)
 			test.pr.Merged = boolPtr(true)
+			wasMerged = true
 		})
 		path = fmt.Sprintf("/repos/o/r/statuses/%s", *test.pr.Head.SHA)
 		mux.HandleFunc(path, func(w http.ResponseWriter, r *http.Request) {
@@ -987,6 +1013,7 @@ func TestSubmitQueue(t *testing.T) {
 		})
 
 		sq := getTestSQ(true, config, server)
+		sq.setEmergencyMergeStop(test.emergencyMergeStop)
 
 		obj := github_util.TestObject(config, test.issue, test.pr, test.commits, test.events)
 		if test.imBaseSHA != "" && test.imHeadSHA != "" {
@@ -1036,6 +1063,9 @@ func TestSubmitQueue(t *testing.T) {
 
 		if test.state != "" && test.state != stateSet {
 			t.Errorf("%d:%q state set to %q but expected %q", testNum, test.name, stateSet, test.state)
+		}
+		if test.isMerged != wasMerged {
+			t.Errorf("%d:%q PR merged = %v but wanted %v", testNum, test.name, wasMerged, test.isMerged)
 		}
 		if e, a := test.retestsAvoided, int(sq.retestsAvoided); e != a {
 			t.Errorf("%d:%q expected %v tests avoided but got %v", testNum, test.name, e, a)
@@ -1098,6 +1128,15 @@ func TestCalcMergeRate(t *testing.T) {
 			interval: time.Duration(24 * time.Hour),
 			expected: func(rate float64) bool {
 				return rate > 2 && rate < 3
+			},
+		},
+		{
+			name:     "24fast",
+			preRate:  24,
+			interval: time.Duration(4 * time.Minute),
+			expected: func(rate float64) bool {
+				// Should be no change
+				return rate == 24
 			},
 		},
 	}
@@ -1235,5 +1274,28 @@ func TestHealth(t *testing.T) {
 	sq.updateHealth()
 	if len(sq.healthHistory) != 1 {
 		t.Errorf("updateHealth didn't truncate old entries: %v", sq.healthHistory)
+	}
+}
+
+func TestHealthSVG(t *testing.T) {
+	sq := getTestSQ(false, nil, nil)
+	e2e := sq.e2e.(*fake_e2e.FakeE2ETester)
+
+	for _, state := range []struct {
+		mergePossible bool
+		expected      string
+		notStable     []string
+	}{
+		{true, "running", nil},
+		{false, "blocked</text>", nil},
+		{false, "blocked by kubemark-500", []string{"kubernetes-kubemark-500"}},
+		{false, "blocked by a, b, c, ...", []string{"a", "b", "c", "d"}},
+	} {
+		sq.health.MergePossibleNow = state.mergePossible
+		e2e.NotStableJobNames = state.notStable
+		res := string(sq.getHealthSVG())
+		if !strings.Contains(res, state.expected) {
+			t.Errorf("SVG doesn't contain `%s`: %v", state.expected, res)
+		}
 	}
 }

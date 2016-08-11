@@ -30,6 +30,7 @@ import (
 	"k8s.io/kubernetes/pkg/util/sets"
 
 	"github.com/golang/glog"
+	"io/ioutil"
 )
 
 // E2ETester can be queried for E2E job stability.
@@ -49,8 +50,9 @@ type BuildInfo struct {
 // RealE2ETester is the object which will get status from a google bucket
 // information about recent jobs
 type RealE2ETester struct {
-	JobNames           []string
-	WeakStableJobNames []string
+	BlockingJobNames    []string
+	NonBlockingJobNames []string
+	WeakStableJobNames  []string
 
 	sync.Mutex
 	BuildStatus          map[string]BuildInfo // protect by mutex
@@ -120,6 +122,21 @@ func (e *RealE2ETester) GetBuildResult(job string, number int) (*cache.Result, e
 }
 
 func (e *RealE2ETester) getGCSResult(j cache.Job, n cache.Number) (*cache.Result, error) {
+	// The difference between pre- and post-submit tests is that in the
+	// former, we look for flakes when they pass, and in the latter, we
+	// look for flakes when they fail. This is because presubmit tests will
+	// run multiple times and pass if at least one run passed, but
+	// postsubmit tests run each test only once. For postsubmit tests, we
+	// detect flakiness by comparing between runs, but that's not possible
+	// for presubmit tests, because the PR author might have actually
+	// broken something.
+	if strings.Contains(string(j), "pull") {
+		return e.getGCSPresubmitResult(j, n)
+	}
+	return e.getGCSPostsubmitResult(j, n)
+}
+
+func (e *RealE2ETester) getGCSPostsubmitResult(j cache.Job, n cache.Number) (*cache.Result, error) {
 	stable, err := e.GoogleGCSBucketUtils.CheckFinishedStatus(string(j), int(n))
 	if err != nil {
 		glog.V(4).Infof("Error looking up job: %v, build number: %v", j, n)
@@ -143,6 +160,11 @@ func (e *RealE2ETester) getGCSResult(j cache.Job, n cache.Number) (*cache.Result
 	}
 	if len(thisFailures) == 0 {
 		r.Status = cache.ResultFailed
+		// We add a "flake" just to make sure this appears in the flake
+		// cache as something that needs to be synced.
+		r.Flakes = map[cache.Test]string{
+			cache.RunBrokenTestName: "Unable to get data-- please look at the logs",
+		}
 		return r, nil
 	}
 
@@ -155,11 +177,101 @@ func (e *RealE2ETester) getGCSResult(j cache.Job, n cache.Number) (*cache.Result
 	return r, nil
 }
 
+func (e *RealE2ETester) getGCSPresubmitResult(j cache.Job, n cache.Number) (*cache.Result, error) {
+	stable, err := e.GoogleGCSBucketUtils.CheckFinishedStatus(string(j), int(n))
+	if err != nil {
+		return nil, fmt.Errorf("error looking up job: %v, build number: %v", j, n)
+	}
+	r := &cache.Result{
+		Status: cache.ResultStable,
+		Job:    j,
+		Number: n,
+	}
+	if !stable {
+		r.Status = cache.ResultFailed
+		// We do *not* add a "run completely broken" flake entry since
+		// this is presumably the author's fault, and we don't want to
+		// file issues for things like that.
+		return r, nil
+	}
+
+	// Check to see if there were any individual failures (even though the
+	// run as a whole succeeded).
+	thisFailures, err := e.failureReasons(string(j), int(n), true)
+	if err != nil {
+		glog.V(2).Infof("Error looking up job failure reasons: %v, build number: %v: %v", j, n, err)
+		return r, nil
+	}
+	if len(thisFailures) == 0 {
+		glog.V(2).Infof("No flakes in %v/%v.", j, n)
+		return r, nil
+	}
+
+	r.Flakes = map[cache.Test]string{}
+	for testName, reason := range thisFailures {
+		r.Flakes[cache.Test(testName)] = reason
+	}
+
+	r.Status = cache.ResultFlaky
+	return r, nil
+}
+
+func (e *RealE2ETester) checkPassFail(job string, number int) (stable, ignorableFlakes bool) {
+	if e.resolutionTracker.Resolved(cache.Job(job), cache.Number(number)) {
+		e.setBuildStatus(job, "Problem Resolved", strconv.Itoa(number))
+		return true, true
+	}
+
+	thisResult, err := e.GetBuildResult(job, number)
+	if err != nil || thisResult.Status == cache.ResultFailed {
+		glog.V(4).Infof("Found unstable job: %v, build number: %v: (err: %v) %#v", job, number, err, thisResult)
+		e.setBuildStatus(job, "Not Stable", strconv.Itoa(number))
+		return false, false
+	}
+
+	if thisResult.Status == cache.ResultStable {
+		e.setBuildStatus(job, "Stable", strconv.Itoa(number))
+		return true, false
+	}
+
+	lastResult, err := e.GetBuildResult(job, number-1)
+	if err != nil || lastResult.Status == cache.ResultFailed {
+		glog.V(4).Infof("prev job doesn't help: %v, build number: %v (the previous build); (err %v) %#v", job, number-1, err, lastResult)
+		e.setBuildStatus(job, "Not Stable", strconv.Itoa(number))
+		return true, false
+	}
+
+	if lastResult.Status == cache.ResultStable {
+		e.setBuildStatus(job, "Ignorable flake", strconv.Itoa(number))
+		return true, true
+	}
+
+	intersection := sets.NewString()
+	for testName := range thisResult.Flakes {
+		if _, ok := lastResult.Flakes[testName]; ok {
+			intersection.Insert(string(testName))
+		}
+	}
+	if len(intersection) == 0 {
+		glog.V(2).Infof("Ignoring failure of %v/%v since it didn't happen the previous run this run = %v; prev run = %v.", job, number, thisResult.Flakes, lastResult.Flakes)
+		e.setBuildStatus(job, "Ignorable flake", strconv.Itoa(number))
+		return true, true
+	}
+	glog.V(2).Infof("Failure of %v/%v is legit. Tests that failed multiple times in a row: %v", job, number, intersection)
+	e.setBuildStatus(job, "Not Stable", strconv.Itoa(number))
+	return false, false
+}
+
+// LatestRunOfJob returns the number of the most recent completed run of the given job.
+func (e *RealE2ETester) LatestRunOfJob(jobName string) (int, error) {
+	return e.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(jobName)
+}
+
 // GCSBasedStable is a version of Stable function that depends on files stored in GCS instead of Jenkis
 func (e *RealE2ETester) GCSBasedStable() (allStable, ignorableFlakes bool) {
 	allStable = true
 
-	for _, job := range e.JobNames {
+	for _, job := range e.BlockingJobNames {
 		lastBuildNumber, err := e.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
 		glog.V(4).Infof("Checking status of %v, %v", job, lastBuildNumber)
 		if err != nil {
@@ -168,53 +280,26 @@ func (e *RealE2ETester) GCSBasedStable() (allStable, ignorableFlakes bool) {
 			continue
 		}
 
-		if e.resolutionTracker.Resolved(cache.Job(job), cache.Number(lastBuildNumber)) {
-			e.setBuildStatus(job, "Problem Resolved", strconv.Itoa(lastBuildNumber))
+		stable, flakes := e.checkPassFail(job, lastBuildNumber)
+		allStable = allStable && stable
+		ignorableFlakes = ignorableFlakes || flakes
+	}
+
+	// Also get status for non-blocking jobs
+	for _, job := range e.NonBlockingJobNames {
+		lastBuildNumber, err := e.GoogleGCSBucketUtils.GetLastestBuildNumberFromJenkinsGoogleBucket(job)
+		glog.V(4).Infof("Checking status of %v, %v", job, lastBuildNumber)
+		if err != nil {
+			glog.Errorf("Error while getting data for %v: %v", job, err)
+			e.setBuildStatus(job, "[nonblocking] Not Stable", strconv.Itoa(lastBuildNumber))
 			continue
 		}
 
-		thisResult, err := e.GetBuildResult(job, lastBuildNumber)
-		if err != nil || thisResult.Status == cache.ResultFailed {
-			glog.V(4).Infof("Found unstable job: %v, build number: %v: (err: %v) %#v", job, lastBuildNumber, err, thisResult)
-			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
-			allStable = false
-			continue
+		if thisResult, err := e.GetBuildResult(job, lastBuildNumber); err != nil || thisResult.Status != cache.ResultStable {
+			e.setBuildStatus(job, "[nonblocking] Not Stable", strconv.Itoa(lastBuildNumber))
+		} else {
+			e.setBuildStatus(job, "[nonblocking] Stable", strconv.Itoa(lastBuildNumber))
 		}
-
-		if thisResult.Status == cache.ResultStable {
-			e.setBuildStatus(job, "Stable", strconv.Itoa(lastBuildNumber))
-			continue
-		}
-
-		lastResult, err := e.GetBuildResult(job, lastBuildNumber-1)
-		if err != nil || lastResult.Status == cache.ResultFailed {
-			glog.V(4).Infof("prev job doesn't help: %v, build number: %v (the previous build); (err %v) %#v", job, lastBuildNumber-1, err, lastResult)
-			allStable = false
-			e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
-			continue
-		}
-
-		if lastResult.Status == cache.ResultStable {
-			ignorableFlakes = true
-			e.setBuildStatus(job, "Ignorable flake", strconv.Itoa(lastBuildNumber))
-			continue
-		}
-
-		intersection := sets.NewString()
-		for testName := range thisResult.Flakes {
-			if _, ok := lastResult.Flakes[testName]; ok {
-				intersection.Insert(string(testName))
-			}
-		}
-		if len(intersection) == 0 {
-			glog.V(2).Infof("Ignoring failure of %v/%v since it didn't happen the previous run this run = %v; prev run = %v.", job, lastBuildNumber, thisResult.Flakes, lastResult.Flakes)
-			ignorableFlakes = true
-			e.setBuildStatus(job, "Ignorable flake", strconv.Itoa(lastBuildNumber))
-			continue
-		}
-		glog.V(2).Infof("Failure of %v/%v is legit. Tests that failed multiple times in a row: %v", job, lastBuildNumber, intersection)
-		allStable = false
-		e.setBuildStatus(job, "Not Stable", strconv.Itoa(lastBuildNumber))
 	}
 
 	return allStable, ignorableFlakes
@@ -231,21 +316,34 @@ func getJUnitFailures(r io.Reader) (failures map[string]string, err error) {
 		FailCount int        `xml:"failures,attr"`
 		Testcases []Testcase `xml:"testcase"`
 	}
-	ts := &Testsuite{}
-	// TODO: this full parse is a bit slower than the old scanf routine--
-	// could switch back for the case where we only care whether there was
-	// a failure or not if that is an issue in practice.
-	err = xml.NewDecoder(r).Decode(ts)
+	type Testsuites struct {
+		TestSuites []Testsuite `xml:"testsuite"`
+	}
+	var testSuiteList []Testsuite
+	failures = map[string]string{}
+	testSuites := &Testsuites{}
+	testSuite := &Testsuite{}
+	b, err := ioutil.ReadAll(r)
 	if err != nil {
 		return failures, err
 	}
-	if ts.FailCount == 0 {
-		return nil, nil
+	// first try to parse the result with <testsuites> as top tag
+	err = xml.Unmarshal(b, testSuites)
+	if err == nil && len(testSuites.TestSuites) > 0 {
+		testSuiteList = testSuites.TestSuites
+	} else {
+		// second try to parse the result with <testsuite> as top tag
+		err = xml.Unmarshal(b, testSuite)
+		if err != nil {
+			return nil, err
+		}
+		testSuiteList = []Testsuite{*testSuite}
 	}
-	failures = map[string]string{}
-	for _, tc := range ts.Testcases {
-		if tc.Failure != "" {
-			failures[fmt.Sprintf("%v {%v}", tc.Name, tc.ClassName)] = tc.Failure
+	for _, ts := range testSuiteList {
+		for _, tc := range ts.Testcases {
+			if tc.Failure != "" {
+				failures[fmt.Sprintf("%v {%v}", tc.Name, tc.ClassName)] = tc.Failure
+			}
 		}
 	}
 	return failures, nil
@@ -314,6 +412,11 @@ func (e *RealE2ETester) GCSWeakStable() bool {
 		}
 		if stable, err := e.GoogleGCSBucketUtils.CheckFinishedStatus(job, lastBuildNumber); stable && err == nil {
 			e.setBuildStatus(job, "Stable", strconv.Itoa(lastBuildNumber))
+			continue
+		}
+
+		if e.resolutionTracker.Resolved(cache.Job(job), cache.Number(lastBuildNumber)) {
+			e.setBuildStatus(job, "Problem Resolved", strconv.Itoa(lastBuildNumber))
 			continue
 		}
 

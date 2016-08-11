@@ -54,13 +54,18 @@ var (
 	}
 )
 
-func (ngx *Manager) loadTemplate() {
-	tmpl, _ := template.New("nginx.tmpl").Funcs(funcMap).ParseFiles(tmplPath)
+func (ngx *Manager) loadTemplate() error {
+	tmpl, err := template.New("nginx.tmpl").Funcs(funcMap).ParseFiles(tmplPath)
+	if err != nil {
+		return err
+	}
 	ngx.template = tmpl
+	return nil
 }
 
 func (ngx *Manager) writeCfg(cfg config.Configuration, ingressCfg IngressConfig) (bool, error) {
 	conf := make(map[string]interface{})
+	conf["backlogSize"] = sysctlSomaxconn()
 	conf["upstreams"] = ingressCfg.Upstreams
 	conf["servers"] = ingressCfg.Servers
 	conf["tcpUpstreams"] = ingressCfg.TCPUpstreams
@@ -73,7 +78,7 @@ func (ngx *Manager) writeCfg(cfg config.Configuration, ingressCfg IngressConfig)
 	if glog.V(3) {
 		b, err := json.Marshal(conf)
 		if err != nil {
-			fmt.Println("error:", err)
+			glog.Errorf("unexpected error:", err)
 		}
 		glog.Infof("NGINX configuration: %v", string(b))
 	}
@@ -81,7 +86,7 @@ func (ngx *Manager) writeCfg(cfg config.Configuration, ingressCfg IngressConfig)
 	buffer := new(bytes.Buffer)
 	err := ngx.template.Execute(buffer, conf)
 	if err != nil {
-		glog.Infof("NGINX error: %v", err)
+		glog.V(3).Infof("%v", string(buffer.Bytes()))
 		return false, err
 	}
 
