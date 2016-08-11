@@ -12,7 +12,7 @@ container: server
 	docker build -t $(PREFIX):$(TAG) .
 
 push: container
-	gcloud docker push $(PREFIX):$(TAG)
+	docker push $(PREFIX):$(TAG)
 
 clean:
 	# remove servicelb and contrib-haproxy images
