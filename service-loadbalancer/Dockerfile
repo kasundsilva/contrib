@@ -38,5 +38,4 @@ ADD README.md README.md
 ADD ssl.pem /etc/haproxy/ssl.pem
 ADD ca.crt /etc/haproxy/ca.crt
 
-RUN touch /var/log/haproxy.log  && chmod 777 /var/log/haproxy.log
-RUN nohup touch /var/run/haproxy.pid > /var/log/haproxy.log
+RUN touch /var/run/haproxy.pid
