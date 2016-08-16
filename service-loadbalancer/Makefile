@@ -4,12 +4,11 @@ all: push
 TAG = 0.4.3
 PREFIX = registry.182.docker.appfactory.private.wso2.com:5000/haproxy-dev
 HAPROXY_IMAGE = haproxy-dev
-SRC = service_loadbalancer.go loadbalancer_log.go
 
-service_loadbalancer: $(SRC)
-	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o $@ $(SRC)
+server: service_loadbalancer.go
+	CGO_ENABLED=0 GOOS=linux godep go build -a -installsuffix cgo -ldflags '-w' -o service_loadbalancer ./service_loadbalancer.go ./loadbalancer_log.go
 
-container: service_loadbalancer
+container: server
 	docker build -t $(PREFIX):$(TAG) .
 
 push: container
@@ -21,4 +20,3 @@ clean:
 	docker rmi -f $(PREFIX):$(TAG) || true
 	rm -f service_loadbalancer
 
-.PHONY: container push
