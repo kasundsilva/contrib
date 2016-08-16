@@ -18,3 +18,5 @@ clean:
 	# remove servicelb and contrib-haproxy images
 	docker rmi -f $(HAPROXY_IMAGE):$(TAG) || true
 	docker rmi -f $(PREFIX):$(TAG) || true
+	#rm -f service_loadbalancer
+
