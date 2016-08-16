@@ -19,7 +19,7 @@ spec:
       nodeSelector:
         role: loadbalancer
       containers:
-      - image: nishadi/serviceha:0.1
+      - image: registry.182.docker.appfactory.private.wso2.com:5000/haproxy-dev:0.4.3
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
@@ -50,3 +50,4 @@ spec:
         args:
         - --tcp-services=mysql:3306,nginxsvc:443
         - --ssl-cert= /etc/haproxy/ssl.pem
+        - --syslog=true
