@@ -1,7 +1,7 @@
 all: push
 
 # 0.0 shouldn't clobber any released builds
-TAG = 0.4.3
+TAG = 0.4-0.7.0_2016_08_18
 PREFIX = registry.182.docker.appfactory.private.wso2.com:5000/haproxy-dev
 HAPROXY_IMAGE = haproxy-dev
 
