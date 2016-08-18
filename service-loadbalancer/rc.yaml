@@ -19,7 +19,7 @@ spec:
       nodeSelector:
         role: loadbalancer
       containers:
-      - image: registry.182.docker.appfactory.private.wso2.com:5000/haproxy-dev:0.4.3
+      - image: registry.182.docker.appfactory.private.wso2.com:5000/haproxy-dev:0.4-0.7.0_2016_08_18
         imagePullPolicy: Always
         livenessProbe:
           httpGet:
