@@ -55,6 +55,8 @@ const (
 	lbAclMatch               = "serviceloadbalancer/lb.aclMatch"
 	lbCookieStickySessionKey = "serviceloadbalancer/lb.cookie-sticky-session"
 	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
+	tenantDomain		 = "tenantDomain"
+	appType			 = "type"
 )
 
 var (
@@ -191,6 +193,12 @@ type service struct {
 	IsDifferentConnectionMode bool
 	ConnectionMode            string
 	HTTPSHealthCheck          string
+
+	//Tenant domain of user
+	TenantDomain 		  string
+
+	//App Type
+	AppType			  string
 }
 
 type serviceByName []service
@@ -250,6 +258,18 @@ func (s serviceAnnotations) getSslTerm() (string, bool) {
 
 func (s serviceAnnotations) getAclMatch() (string, bool) {
 	val, ok := s[lbAclMatch]
+	return val, ok
+}
+
+type serviceLabels map[string]string
+
+func (s serviceLabels) getTenantDomain() (string, bool) {
+	val, ok := s[tenantDomain]
+	return val, ok
+}
+
+func (s serviceLabels) getAppType() (string, bool) {
+	val, ok := s[appType]
 	return val, ok
 }
 
@@ -485,6 +505,16 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				newSvc.IsDifferentConnectionMode = true
 				newSvc.ConnectionMode = "httpclose"
 				newSvc.HTTPSHealthCheck = ""
+			}
+
+			//Set the app type in the service
+			if val, ok := serviceLabels(s.ObjectMeta.Labels).getAppType(); ok {
+				newSvc.AppType = val
+			}
+
+			//Set the tenant domain in the service
+			if val, ok := serviceLabels(s.ObjectMeta.Labels).getTenantDomain(); ok {
+				newSvc.TenantDomain = val
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
