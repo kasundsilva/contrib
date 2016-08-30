@@ -57,6 +57,7 @@ const (
 	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
 	tenantDomain		 = "tenantDomain"
 	appType			 = "type"
+	customDomain             = "customDomain"
 )
 
 var (
@@ -142,6 +143,10 @@ var (
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
                 default balance algorithm.`)
+
+	certificatesDir = flags.String("certs-dir", "/srv/certs/", `if set, it allows a custom directory to save
+                               PEM files relevant to each custom domain.`)
+
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -199,6 +204,11 @@ type service struct {
 
 	//App Type
 	AppType			  string
+
+	//If label "customdomain" has a value set the value of this variable to
+	//identify that a new custom domain has been added
+	CustomDomain string
+
 }
 
 type serviceByName []service
@@ -225,6 +235,7 @@ type loadBalancerConfig struct {
 	sslCert        string `json:"sslCert" description:"PEM for ssl."`
 	sslCaCert      string `json:"sslCaCert" description:"PEM to verify client's certificate."`
 	lbDefAlgorithm string `description:"custom default load balancer algorithm".`
+	certificatesDir string `json:"certificatesDir" description:"directory path of where all PEM files for custom domains will be added"`
 }
 
 type staticPageHandler struct {
@@ -271,6 +282,11 @@ func (s serviceLabels) getTenantDomain() (string, bool) {
 func (s serviceLabels) getAppType() (string, bool) {
 	val, ok := s[appType]
 	return val, ok
+}
+
+func (s serviceLabels) getCustomDomain() (string, bool) {
+        val, ok := s[customDomain]
+        return val, ok
 }
 
 // Get serves the error page
@@ -335,13 +351,13 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 	conf["services"] = services
 
 	var sslConfig string
-	if cfg.sslCert != "" {
-		sslConfig = "crt " + cfg.sslCert
+	if cfg.certificatesDir != "" {
+		sslConfig = "crt " + cfg.certificatesDir
 	}
 	if cfg.sslCaCert != "" {
 		sslConfig += " ca-file " + cfg.sslCaCert
 	}
-	conf["sslCert"] = sslConfig
+	conf["sslConfig"] = sslConfig
 
 	// default load balancer algorithm is roundrobin
 	conf["defLbAlgorithm"] = lbDefAlgorithm
@@ -517,6 +533,12 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 				newSvc.TenantDomain = val
 			}
 
+			//Set the custom domain if the custom domain has been set
+			if val, ok := serviceLabels(s.ObjectMeta.Labels).getCustomDomain(); ok {
+				newSvc.CustomDomain = val
+				//Query G-reg Api, obtain certs and add to certs directory
+			}
+
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
 				newSvc.FrontendPort = servicePort.Port
 				tcpSvc = append(tcpSvc, newSvc)
@@ -630,7 +652,7 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 
 // parseCfg parses the given configuration file.
 // cmd line params take precedence over config directives.
-func parseCfg(configPath string, defLbAlgorithm string, sslCert string, sslCaCert string) *loadBalancerConfig {
+func parseCfg(configPath string, defLbAlgorithm string, sslCert string, sslCaCert string, certificatesDir string) *loadBalancerConfig {
 	jsonBlob, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		glog.Fatalf("Could not parse lb config: %v", err)
@@ -643,6 +665,7 @@ func parseCfg(configPath string, defLbAlgorithm string, sslCert string, sslCaCer
 	cfg.sslCert = sslCert
 	cfg.sslCaCert = sslCaCert
 	cfg.lbDefAlgorithm = defLbAlgorithm
+	cfg.certificatesDir = certificatesDir
 	glog.Infof("Creating new loadbalancer: %+v", cfg)
 	return &cfg
 }
@@ -710,7 +733,7 @@ func dryRun(lbc *loadBalancerController) {
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
-	cfg := parseCfg(*config, *lbDefAlgorithm, *sslCert, *sslCaCert)
+	cfg := parseCfg(*config, *lbDefAlgorithm, *sslCert, *sslCaCert, *certificatesDir)
 
 	var kubeClient *unversioned.Client
 	var err error

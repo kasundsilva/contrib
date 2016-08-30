@@ -35,7 +35,11 @@ ADD template.cfg template.cfg
 ADD loadbalancer.json loadbalancer.json
 ADD haproxy_reload haproxy_reload
 ADD README.md README.md
-ADD ssl.pem /etc/haproxy/ssl.pem
-ADD ca.crt /etc/haproxy/ca.crt
+#ADD ca.crt /etc/haproxy/ca.crt
 
+RUN mkdir -p /srv/certs
+# Add cert for local domain (*.wso2localapps.com)
+ADD ssl.pem /srv/certs
+# Add cert for custom domain (currently added manually)
+ADD custom.pem /srv/certs
 RUN touch /var/run/haproxy.pid
