@@ -57,6 +57,7 @@ const (
 	defaultErrorPage         = "file:///etc/haproxy/errors/404.http"
 	tenantDomain		 = "tenantDomain"
 	appType			 = "type"
+	exposureLevel		 = "exposure-level"
 )
 
 var (
@@ -142,6 +143,9 @@ var (
 
 	lbDefAlgorithm = flags.String("balance-algorithm", "roundrobin", `if set, it allows a custom
                 default balance algorithm.`)
+
+
+	lbType = flags.String("load-balancer-type", "public", `define the lb is public/private`)
 )
 
 // service encapsulates a single backend entry in the load balancer config.
@@ -199,6 +203,9 @@ type service struct {
 
 	//App Type
 	AppType			  string
+
+	//Exposure Level
+	ExposureLevel		  string
 }
 
 type serviceByName []service
@@ -225,7 +232,8 @@ type loadBalancerConfig struct {
 	sslCert        string `json:"sslCert" description:"PEM for ssl."`
 	sslCaCert      string `json:"sslCaCert" description:"PEM to verify client's certificate."`
 	lbDefAlgorithm string `description:"custom default load balancer algorithm".`
-}
+	lbType 	       string `json:"lbType" description:"Type of the load balancer public/private"`
+ }
 
 type staticPageHandler struct {
 	pagePath     string
@@ -270,6 +278,11 @@ func (s serviceLabels) getTenantDomain() (string, bool) {
 
 func (s serviceLabels) getAppType() (string, bool) {
 	val, ok := s[appType]
+	return val, ok
+}
+
+func (s serviceLabels) getExposureLevel() (string, bool) {
+	val, ok := s[exposureLevel]
 	return val, ok
 }
 
@@ -333,6 +346,7 @@ func (cfg *loadBalancerConfig) write(services map[string][]service, dryRun bool)
 	conf := make(map[string]interface{})
 	conf["startSyslog"] = strconv.FormatBool(cfg.startSyslog)
 	conf["services"] = services
+	conf["lbType"] = cfg.lbType
 
 	var sslConfig string
 	if cfg.sslCert != "" {
@@ -468,6 +482,10 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 			}
 
 			if val, ok := serviceAnnotations(s.ObjectMeta.Annotations).getHost(); ok {
+
+				if *lbType == "private" {
+					val = strings.Replace(val, ".com", ".local", 1)
+				}
 				newSvc.Host = val
 			}
 
@@ -515,6 +533,11 @@ func (lbc *loadBalancerController) getServices() (httpSvc []service, httpsTermSv
 			//Set the tenant domain in the service
 			if val, ok := serviceLabels(s.ObjectMeta.Labels).getTenantDomain(); ok {
 				newSvc.TenantDomain = val
+			}
+
+			//Set the exposure level in the service
+			if val, ok := serviceLabels(s.ObjectMeta.Labels).getExposureLevel(); ok {
+				newSvc.ExposureLevel = val
 			}
 
 			if port, ok := lbc.tcpServices[sName]; ok && port == servicePort.Port {
@@ -630,7 +653,7 @@ func newLoadBalancerController(cfg *loadBalancerConfig, kubeClient *unversioned.
 
 // parseCfg parses the given configuration file.
 // cmd line params take precedence over config directives.
-func parseCfg(configPath string, defLbAlgorithm string, sslCert string, sslCaCert string) *loadBalancerConfig {
+func parseCfg(configPath string, defLbAlgorithm string, sslCert string, sslCaCert string, lbType string) *loadBalancerConfig {
 	jsonBlob, err := ioutil.ReadFile(configPath)
 	if err != nil {
 		glog.Fatalf("Could not parse lb config: %v", err)
@@ -643,6 +666,7 @@ func parseCfg(configPath string, defLbAlgorithm string, sslCert string, sslCaCer
 	cfg.sslCert = sslCert
 	cfg.sslCaCert = sslCaCert
 	cfg.lbDefAlgorithm = defLbAlgorithm
+	cfg.lbType = lbType
 	glog.Infof("Creating new loadbalancer: %+v", cfg)
 	return &cfg
 }
@@ -710,7 +734,7 @@ func dryRun(lbc *loadBalancerController) {
 func main() {
 	clientConfig := kubectl_util.DefaultClientConfig(flags)
 	flags.Parse(os.Args)
-	cfg := parseCfg(*config, *lbDefAlgorithm, *sslCert, *sslCaCert)
+	cfg := parseCfg(*config, *lbDefAlgorithm, *sslCert, *sslCaCert, *lbType)
 
 	var kubeClient *unversioned.Client
 	var err error
